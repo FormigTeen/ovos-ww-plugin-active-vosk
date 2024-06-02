@@ -11,6 +11,7 @@
 # limitations under the License.
 #
 import enum
+import time
 import json
 from os.path import join, exists
 from ovos_bus_client.message import Message
@@ -22,7 +23,7 @@ from ovos_utils.parse import fuzzy_match, MatchStrategy
 from ovos_utils.xdg_utils import xdg_data_home
 from speech_recognition import AudioData
 from vosk import Model as KaldiModel, KaldiRecognizer
-
+from ovos_bus_client import MessageBusClient
 
 class MatchRule(str, enum.Enum):
     CONTAINS = "contains"
@@ -162,6 +163,11 @@ class VoskWakeWordPlugin(HotWordEngine):
     MAX_EXPECTED_DURATION = 3  # seconds of data chunks received at a time
 
     def __init__(self, hotword="hey mycroft", config=None, lang="en-us"):
+        self.bus = MessageBusClient()
+        self.buffer = b""  # Buffer to accumulate audio chunks
+        self.start_time = time.time()
+        self.check_interval = 5
+        self.wake_word_detected = False
         config = config or {}
         super(VoskWakeWordPlugin, self).__init__(hotword, config, lang)
         default_sample = [hotword.replace("_", " ").replace("-", " ")]
@@ -171,10 +177,10 @@ class VoskWakeWordPlugin(HotWordEngine):
         self.thresh = self.config.get("threshold", 0.75)
         self.debug = self.config.get("debug", False)
         self.time_between_checks = \
-            min(self.config.get("time_between_checks", 1.0), 3)
+            min(self.config.get("time_between_checks", 1.0), 5)
         self.expected_duration = self.MAX_EXPECTED_DURATION
-        self._counter = 0
         self._load_model()
+        self.bus.once("enable.wake-word", self.enable_wake_word)
 
     def _load_model(self):
         # model_folder for backwards compat
@@ -187,14 +193,27 @@ class VoskWakeWordPlugin(HotWordEngine):
         else:
             self.model.load_language(self.lang)
 
+    def enable_wake_word(self):
+        self.wake_word_detected = True
+    def update(self, chunk):
+        self.buffer += chunk
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time
+
+        if elapsed_time >= self.time_between_checks:
+            frame_data = self.buffer
+            self.buffer = b""
+            self.start_time = current_time
+            self.wake_word_detected = self.detect_wake_word(frame_data)
+
     def found_wake_word(self, frame_data):
-        """ frame data contains audio data that needs to be checked for a wake
-        word, you can process audio here or just return a result
-        previously handled in update method """
-        self._counter += self.SEC_BETWEEN_WW_CHECKS
-        if self._counter < self.time_between_checks:
-            return False
-        self._counter = 0
+        if self.wake_word_detected:
+            self.wake_word_detected = False
+            self.bus.once("enable.wake-word", self.enable_wake_word)
+            return True
+        return False
+
+    def detect_wake_word(self, frame_data):
         try:
             self.model.process_audio(frame_data, self.lang)
             transcript = self.model.get_final_transcription(self.lang)
@@ -307,7 +326,6 @@ class VoskMultiWakeWordPlugin(HotWordEngine):
         self.full_vocab = self.config.get("full_vocab", False)
         self.debug = self.config.get("debug", False)
         self.time_between_checks = min(self.config.get("time_between_checks", 1.0), 3)
-        self._counter = 0
         self._load_model()
         # TODO refactor this, add native support to OPN
         self.bus = get_mycroft_bus()
@@ -333,16 +351,11 @@ class VoskMultiWakeWordPlugin(HotWordEngine):
                                              self.full_vocab,
                                              self.lang)
         for lang in self.langs:
-            self.model.load_language(lang)
+            for kw_name, kw in self.keywords.items():
+                lang = kw.get("lang") or self.lang
+                self.model.load_language(lang)
 
     def found_wake_word(self, frame_data):
-        """ frame data contains audio data that needs to be checked for a wake
-        word, you can process audio here or just return a result
-        previously handled in update method """
-        self._counter += self.SEC_BETWEEN_WW_CHECKS
-        if self._counter < self.time_between_checks:
-            return False
-        self._counter = 0
         txs = {}
         for kw_name, kw in self.keywords.items():
             lang = kw.get("lang") or self.lang
