@@ -168,6 +168,8 @@ class VoskWakeWordPlugin(HotWordEngine):
         self.buffer = b""  # Buffer to accumulate audio chunks
         self.start_time = time.time()
         self.check_interval = 5
+        self.can_listen = True
+        self.is_speaking = False
         self.wake_word_detected = False
         config = config or {}
         super(VoskWakeWordPlugin, self).__init__(hotword, config, lang)
@@ -178,6 +180,7 @@ class VoskWakeWordPlugin(HotWordEngine):
         self.thresh = self.config.get("threshold", 0.75)
         self.debug = self.config.get("debug", False)
         self.event_names = self.config.get("event_names", ["enable.wake-word"])
+        self.event_name_to_toggle = self.config.get("event_to_toggle_listen", "toggle.listen-wake-word")
         self.time_between_checks = \
             min(self.config.get("time_between_checks", 1.0), 5)
         self.expected_duration = self.MAX_EXPECTED_DURATION
@@ -188,8 +191,18 @@ class VoskWakeWordPlugin(HotWordEngine):
     def _register_events(self):
         for event_name in self.event_names:
             self.bus.on(event_name, self.enable_wake_word)
+        self.bus.on(self.event_name_to_toggle, self.toggle_can_listen)
+        self.bus.on("recognizer_loop:audio_output_start", self.enable_is_speaking)
+        self.bus.on("recognizer_loop:audio_output_end", self.disable_is_speaking)
+
         LOG.debug("Events to WW registered!")
 
+
+    def enable_is_speaking(self, *args):
+        self.is_speaking = True
+
+    def disable_is_speaking(self, *args):
+        self.is_speaking = False
     def _load_model(self):
         # model_folder for backwards compat
         model_path = self.config.get("model") or self.config.get("model_folder")
@@ -201,10 +214,19 @@ class VoskWakeWordPlugin(HotWordEngine):
         else:
             self.model.load_language(self.lang)
 
+    def toggle_can_listen(self, *args):
+        self.can_listen = not self.can_listen
+        if self.can_listen:
+            self.is_speaking = False
+            LOG.info("Now, I'm listening.")
+        else:
+            LOG.info("Now, I'm not listening.")
+
+
     def enable_wake_word(self, *args):
         self.wake_word_detected = True
     def update(self, chunk):
-        if not self.wake_word_detected:
+        if not self.wake_word_detected and self.can_listen and not self.is_speaking:
             self.buffer += chunk
             current_time = time.time()
             elapsed_time = current_time - self.start_time
