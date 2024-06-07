@@ -8,7 +8,7 @@ BASEDIR = os.path.abspath(os.path.dirname(__file__))
 def get_version():
     """ Find the version of the package"""
     version = None
-    version_file = os.path.join(BASEDIR, 'ovos_ww_plugin_vosk', 'version.py')
+    version_file = os.path.join(BASEDIR, 'ovos_ww_plugin_active_vosk', 'version.py')
     major, minor, build, alpha = (None, None, None, None)
     with open(version_file) as f:
         for line in f:
@@ -51,19 +51,18 @@ def required(requirements_file):
 
 
 PLUGIN_ENTRY_POINT = (
-    'ovos-ww-plugin-vosk=ovos_ww_plugin_vosk:VoskWakeWordPlugin',
-    'ovos-ww-plugin-vosk-multi=ovos_ww_plugin_vosk:VoskMultiWakeWordPlugin'
+    'ovos-ww-plugin-active-vosk=ovos_ww_plugin_active_vosk:VoskWakeWordPlugin'
 )
 
 setup(
-    name='ovos-ww-plugin-vosk',
+    name='ovos-ww-plugin-active-vosk',
     version=get_version(),
     description='Kaldi wake word plugin for mycroft',
-    url='https://github.com/OpenVoiceOS/ovos-ww-plugin-vosk',
+    url='https://github.com/FormigTeen/ovos-ww-plugin-active-vosk',
     author='JarbasAi',
-    author_email='jarbasai@mailfence.com',
+    author_email='msformigteen@live.com',
     license='Apache-2.0',
-    packages=['ovos_ww_plugin_vosk'],
+    packages=['ovos_ww_plugin_active_vosk'],
     install_requires=required("requirements/requirements.txt"),
     zip_safe=True,
     classifiers=[
