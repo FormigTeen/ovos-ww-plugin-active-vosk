@@ -163,6 +163,7 @@ class VoskWakeWordPlugin(HotWordEngine):
     MAX_EXPECTED_DURATION = 3  # seconds of data chunks received at a time
 
     def __init__(self, hotword="hey mycroft", config=None, lang="en-us"):
+        print("Eu estou AQUI!")
         self.bus = MessageBusClient()
         self.buffer = b""  # Buffer to accumulate audio chunks
         self.start_time = time.time()
@@ -180,7 +181,9 @@ class VoskWakeWordPlugin(HotWordEngine):
             min(self.config.get("time_between_checks", 1.0), 5)
         self.expected_duration = self.MAX_EXPECTED_DURATION
         self._load_model()
+        self.bus.run_in_thread()
         self.bus.once("enable.wake-word", self.enable_wake_word)
+        print("Loaded")
 
     def _load_model(self):
         # model_folder for backwards compat
@@ -193,18 +196,19 @@ class VoskWakeWordPlugin(HotWordEngine):
         else:
             self.model.load_language(self.lang)
 
-    def enable_wake_word(self):
+    def enable_wake_word(self, *args):
         self.wake_word_detected = True
     def update(self, chunk):
-        self.buffer += chunk
-        current_time = time.time()
-        elapsed_time = current_time - self.start_time
+        if not self.wake_word_detected:
+            self.buffer += chunk
+            current_time = time.time()
+            elapsed_time = current_time - self.start_time
 
-        if elapsed_time >= self.time_between_checks:
-            frame_data = self.buffer
-            self.buffer = b""
-            self.start_time = current_time
-            self.wake_word_detected = self.detect_wake_word(frame_data)
+            if elapsed_time >= self.time_between_checks:
+                frame_data = self.buffer
+                self.buffer = b""
+                self.start_time = current_time
+                self.wake_word_detected = self.detect_wake_word(frame_data)
 
     def found_wake_word(self, frame_data):
         if self.wake_word_detected:
