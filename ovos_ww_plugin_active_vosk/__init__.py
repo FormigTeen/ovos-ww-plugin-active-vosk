@@ -163,7 +163,7 @@ class VoskWakeWordPlugin(HotWordEngine):
     MAX_EXPECTED_DURATION = 3  # seconds of data chunks received at a time
 
     def __init__(self, hotword="hey mycroft", config=None, lang="en-us"):
-        print("Eu estou AQUI!")
+        LOG.info("Ovos WW Plugin Active Vosk Init")
         self.bus = MessageBusClient()
         self.buffer = b""  # Buffer to accumulate audio chunks
         self.start_time = time.time()
@@ -177,13 +177,18 @@ class VoskWakeWordPlugin(HotWordEngine):
         self.rule = self.config.get("rule", MatchRule.EQUALS)
         self.thresh = self.config.get("threshold", 0.75)
         self.debug = self.config.get("debug", False)
+        self.event_names = self.config.get("event_names", ["enable.wake-word"])
         self.time_between_checks = \
             min(self.config.get("time_between_checks", 1.0), 5)
         self.expected_duration = self.MAX_EXPECTED_DURATION
         self._load_model()
         self.bus.run_in_thread()
-        self.bus.once("enable.wake-word", self.enable_wake_word)
-        print("Loaded")
+        self._register_events()
+
+    def _register_events(self):
+        for event_name in self.event_names:
+            self.bus.on(event_name, self.enable_wake_word)
+        LOG.debug("Events to WW registered!")
 
     def _load_model(self):
         # model_folder for backwards compat
@@ -213,7 +218,6 @@ class VoskWakeWordPlugin(HotWordEngine):
     def found_wake_word(self, frame_data):
         if self.wake_word_detected:
             self.wake_word_detected = False
-            self.bus.once("enable.wake-word", self.enable_wake_word)
             return True
         return False
 
@@ -226,8 +230,9 @@ class VoskWakeWordPlugin(HotWordEngine):
             return False
         if not transcript or transcript == self.model.UNK:
             return False
+        print(self.debug)
         if self.debug:
-            LOG.debug("TRANSCRIPT: " + transcript)
+            LOG.debug("TRANSCRIPT on WW Plugin: " + transcript)
         return self.apply_rules(transcript, self.samples, self.rule, self.thresh)
 
     @classmethod
